@@ -14,6 +14,7 @@ Benchmarking enumerates every registered combo via
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Sequence, Tuple
 
 from kernels.common.attention_unified import supports_native_unified_attention
@@ -152,7 +153,7 @@ def _auto_variant(req: AttentionRequest) -> Gfx950DenseVariant:
     bm = int(geometry["block_m"])
     bn = int(geometry["block_n"])
     sq, sk = int(req.seqlen_q), int(req.seqlen_k)
-    ragged = (sq == sk) and ((sq % bm != 0) or (sk % bn != 0))
+    ragged = _ragged_self_attention(sq, sk, bm, bn)
     nqb = (sq + bm - 1) // bm
     work = nqb * int(req.nhead_q) * int(req.batch)
     np = int(req.dense_num_persistent)
@@ -164,15 +165,8 @@ def _auto_variant(req: AttentionRequest) -> Gfx950DenseVariant:
     else:
         persistent = work >= np
     wdma_mode = _parse_on_off_auto(req.dense_wide_lds_dma, "dense_wide_lds_dma")
-    wdma_ok = (
-        persistent
-        and int(req.hdim_q) == 128
-        and int(req.hdim_v) == 128
-        and req.dtype.lower() in ("fp16", "bf16")
-        and int(req.mask_type) != 0
-        and int(req.sliding_window) == 0
-        and not bool(req.use_sinks)
-        and not ragged
+    wdma_ok = _wide_dma_eligible(
+        req, SimpleNamespace(persistent=persistent, ragged=ragged)
     )
     if wdma_mode == "on":
         if not persistent:
@@ -207,6 +201,10 @@ def select_dense_variant(req: AttentionRequest) -> Gfx950DenseVariant:
     return matching[0]
 
 
+def _ragged_self_attention(sq: int, sk: int, block_m: int, block_n: int) -> bool:
+    return sq == sk and (sq % block_m != 0 or sk % block_n != 0)
+
+
 def _wide_dma_eligible(req: AttentionRequest, spec) -> bool:
     return (
         bool(spec.persistent)
@@ -235,13 +233,19 @@ def _dense_opted_in(
     return True, "ok"
 
 
-def _dense_spec(req: OperatorRequest, variant: Gfx950DenseVariant):
+def _dense_spec(
+    req: OperatorRequest, variant: Gfx950DenseVariant | None = None
+):
     """Build the launch-ready ``Gfx950AttentionDenseSpec`` for ``variant``.
 
     Tile, persist, and wide-DMA come from the frozen variant. ``persist_decode``
     stays on the request (``auto`` selects GQA-local mappings inside the spec).
     Non-tile-multiple self-attention lengths use the on-chip ragged path.
+    ``variant=None`` keeps the one-argument call used by existing tests and
+    selects the auto-policy variant.
     """
+    if variant is None:
+        variant = select_dense_variant(req)
     from kernels.common.attention_dense_spec import DENSE_TILE_GEOMETRIES
     from kernels.gfx950.attention_dense import (
         GFX950_DENSE_LAYOUTS,
@@ -261,7 +265,7 @@ def _dense_spec(req: OperatorRequest, variant: Gfx950DenseVariant):
     bm = int(geometry["block_m"])
     bn = int(geometry["block_n"])
     decode = req.dense_persist_decode.strip().lower()
-    ragged = (sq == sk) and ((sq % bm != 0) or (sk % bn != 0))
+    ragged = _ragged_self_attention(sq, sk, bm, bn)
     return Gfx950AttentionDenseSpec(
         batch=int(req.batch),
         seqlen_q=sq,
