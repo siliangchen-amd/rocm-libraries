@@ -45,6 +45,7 @@
 
 #  include <algorithm>
 #  include <execution>
+#  include <type_traits>
 #  include <utility>
 
 #  include "hipstd.hpp"
@@ -60,7 +61,23 @@ inline bool is_partitioned(execution::parallel_unsequenced_policy, I f, I l, P p
   ::hipstd::__maybe_bind_globals();
 
   ::hipstd::warn_if_no_xnack();
-  return ::thrust::is_partitioned(::thrust::device, f, l, ::std::move(p));
+  using p_t = ::std::decay_t<P>;
+
+  if constexpr (::std::is_trivially_destructible_v<p_t>)
+  {
+    return ::thrust::is_partitioned(::thrust::device, f, l, ::std::move(p));
+  }
+  else
+  {
+    // is_partitioned synchronizes internally (find-based, result read back to the host), so the
+    // guard is not needed for lifetime.  It is still required so that device code never
+    // copy-constructs an owning callable by value: the proxy hands the kernel a pointer, and
+    // the callable is only ever move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<p_t> guard(::std::move(p));
+    bool result = ::thrust::is_partitioned(::thrust::device, f, l, ::hipstd::detail::callable_proxy<p_t>{guard.get()});
+    guard.destroy_and_free();
+    return result;
+  }
 }
 
 template <typename I,
@@ -90,7 +107,23 @@ inline I partition(execution::parallel_unsequenced_policy, I f, I l, P p)
   ::hipstd::__maybe_bind_globals();
 
   ::hipstd::warn_if_no_xnack();
-  return ::thrust::partition(::thrust::device, f, l, ::std::move(p));
+  using p_t = ::std::decay_t<P>;
+
+  if constexpr (::std::is_trivially_destructible_v<p_t>)
+  {
+    return ::thrust::partition(::thrust::device, f, l, ::std::move(p));
+  }
+  else
+  {
+    // partition synchronizes internally (partition point read back to the host), so the guard is
+    // not needed for lifetime.  It is still required so that device code never copy-constructs an
+    // owning callable by value: the proxy hands the kernel a pointer, and the callable is only
+    // ever move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<p_t> guard(::std::move(p));
+    I result = ::thrust::partition(::thrust::device, f, l, ::hipstd::detail::callable_proxy<p_t>{guard.get()});
+    guard.destroy_and_free();
+    return result;
+  }
 }
 
 template <typename I,
@@ -123,9 +156,26 @@ inline pair<O0, O1> partition_copy(execution::parallel_unsequenced_policy, I f, 
   ::hipstd::__maybe_bind_globals();
 
   ::hipstd::warn_if_no_xnack();
-  auto [r0, r1] = ::thrust::partition_copy(::thrust::device, f, l, fo0, fo1, ::std::move(p));
+  using p_t = ::std::decay_t<P>;
 
-  return {::std::move(r0), ::std::move(r1)};
+  if constexpr (::std::is_trivially_destructible_v<p_t>)
+  {
+    auto [r0, r1] = ::thrust::partition_copy(::thrust::device, f, l, fo0, fo1, ::std::move(p));
+
+    return {::std::move(r0), ::std::move(r1)};
+  }
+  else
+  {
+    // partition_copy synchronizes internally (selected counts read back to the host), so the guard
+    // is not needed for lifetime.  It is still required so that device code never copy-constructs
+    // an owning callable by value: the proxy hands the kernel a pointer, and the callable is only
+    // ever move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<p_t> guard(::std::move(p));
+    auto [r0, r1] =
+      ::thrust::partition_copy(::thrust::device, f, l, fo0, fo1, ::hipstd::detail::callable_proxy<p_t>{guard.get()});
+    guard.destroy_and_free();
+    return {::std::move(r0), ::std::move(r1)};
+  }
 }
 
 template <
@@ -160,7 +210,23 @@ inline I stable_partition(execution::parallel_unsequenced_policy, I f, I l, P p)
   ::hipstd::__maybe_bind_globals();
 
   ::hipstd::warn_if_no_xnack();
-  return ::thrust::stable_partition(::thrust::device, f, l, ::std::move(p));
+  using p_t = ::std::decay_t<P>;
+
+  if constexpr (::std::is_trivially_destructible_v<p_t>)
+  {
+    return ::thrust::stable_partition(::thrust::device, f, l, ::std::move(p));
+  }
+  else
+  {
+    // stable_partition synchronizes internally (partition point read back to the host), so the
+    // guard is not needed for lifetime.  It is still required so that device code never
+    // copy-constructs an owning callable by value: the proxy hands the kernel a pointer, and the
+    // callable is only ever move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<p_t> guard(::std::move(p));
+    I result = ::thrust::stable_partition(::thrust::device, f, l, ::hipstd::detail::callable_proxy<p_t>{guard.get()});
+    guard.destroy_and_free();
+    return result;
+  }
 }
 
 template <typename I,

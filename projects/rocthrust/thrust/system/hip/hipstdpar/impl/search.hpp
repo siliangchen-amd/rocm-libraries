@@ -51,6 +51,7 @@
 
 #  include <algorithm>
 #  include <execution>
+#  include <type_traits>
 #  include <utility>
 
 #  include "hipstd.hpp"
@@ -361,7 +362,23 @@ inline bool all_of(execution::parallel_unsequenced_policy, I f, I l, P p)
   ::hipstd::__maybe_bind_globals();
 
   ::hipstd::warn_if_no_xnack();
-  return ::thrust::all_of(::thrust::device, f, l, ::std::move(p));
+  using p_t = ::std::decay_t<P>;
+
+  if constexpr (::std::is_trivially_destructible_v<p_t>)
+  {
+    return ::thrust::all_of(::thrust::device, f, l, ::std::move(p));
+  }
+  else
+  {
+    // all_of synchronizes internally (reduction result read back to the host), so the guard is not
+    // needed for lifetime.  It is still required so that device code never copy-constructs an
+    // owning callable by value: the proxy hands the kernel a pointer, and the callable is only ever
+    // move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<p_t> guard(::std::move(p));
+    bool result = ::thrust::all_of(::thrust::device, f, l, ::hipstd::detail::callable_proxy<p_t>{guard.get()});
+    guard.destroy_and_free();
+    return result;
+  }
 }
 
 template <typename I,
@@ -391,7 +408,23 @@ inline bool any_of(execution::parallel_unsequenced_policy, I f, I l, P p)
   ::hipstd::__maybe_bind_globals();
 
   ::hipstd::warn_if_no_xnack();
-  return ::thrust::any_of(::thrust::device, f, l, ::std::move(p));
+  using p_t = ::std::decay_t<P>;
+
+  if constexpr (::std::is_trivially_destructible_v<p_t>)
+  {
+    return ::thrust::any_of(::thrust::device, f, l, ::std::move(p));
+  }
+  else
+  {
+    // any_of synchronizes internally (reduction result read back to the host), so the guard is not
+    // needed for lifetime.  It is still required so that device code never copy-constructs an
+    // owning callable by value: the proxy hands the kernel a pointer, and the callable is only ever
+    // move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<p_t> guard(::std::move(p));
+    bool result = ::thrust::any_of(::thrust::device, f, l, ::hipstd::detail::callable_proxy<p_t>{guard.get()});
+    guard.destroy_and_free();
+    return result;
+  }
 }
 
 template <typename I,
@@ -421,7 +454,23 @@ inline bool none_of(execution::parallel_unsequenced_policy, I f, I l, P p)
   ::hipstd::__maybe_bind_globals();
 
   ::hipstd::warn_if_no_xnack();
-  return ::thrust::none_of(::thrust::device, f, l, ::std::move(p));
+  using p_t = ::std::decay_t<P>;
+
+  if constexpr (::std::is_trivially_destructible_v<p_t>)
+  {
+    return ::thrust::none_of(::thrust::device, f, l, ::std::move(p));
+  }
+  else
+  {
+    // none_of synchronizes internally (reduction result read back to the host), so the guard is not
+    // needed for lifetime.  It is still required so that device code never copy-constructs an
+    // owning callable by value: the proxy hands the kernel a pointer, and the callable is only ever
+    // move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<p_t> guard(::std::move(p));
+    bool result = ::thrust::none_of(::thrust::device, f, l, ::hipstd::detail::callable_proxy<p_t>{guard.get()});
+    guard.destroy_and_free();
+    return result;
+  }
 }
 
 template <typename I,
@@ -470,7 +519,23 @@ inline I find_if(execution::parallel_unsequenced_policy, I f, I l, P p)
   ::hipstd::__maybe_bind_globals();
 
   ::hipstd::warn_if_no_xnack();
-  return ::thrust::find_if(::thrust::device, f, l, ::std::move(p));
+  using p_t = ::std::decay_t<P>;
+
+  if constexpr (::std::is_trivially_destructible_v<p_t>)
+  {
+    return ::thrust::find_if(::thrust::device, f, l, ::std::move(p));
+  }
+  else
+  {
+    // find_if synchronizes internally (reduction result read back to the host), so the guard is not
+    // needed for lifetime.  It is still required so that device code never copy-constructs an
+    // owning callable by value: the proxy hands the kernel a pointer, and the callable is only ever
+    // move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<p_t> guard(::std::move(p));
+    I result = ::thrust::find_if(::thrust::device, f, l, ::hipstd::detail::callable_proxy<p_t>{guard.get()});
+    guard.destroy_and_free();
+    return result;
+  }
 }
 
 template <typename I,
@@ -500,7 +565,23 @@ inline I find_if_not(execution::parallel_unsequenced_policy, I f, I l, P p)
   ::hipstd::__maybe_bind_globals();
 
   ::hipstd::warn_if_no_xnack();
-  return ::thrust::find_if_not(::thrust::device, f, l, ::std::move(p));
+  using p_t = ::std::decay_t<P>;
+
+  if constexpr (::std::is_trivially_destructible_v<p_t>)
+  {
+    return ::thrust::find_if_not(::thrust::device, f, l, ::std::move(p));
+  }
+  else
+  {
+    // find_if_not synchronizes internally (reduction result read back to the host), so the guard is
+    // not needed for lifetime.  It is still required so that device code never copy-constructs an
+    // owning callable by value: the proxy hands the kernel a pointer, and the callable is only ever
+    // move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<p_t> guard(::std::move(p));
+    I result = ::thrust::find_if_not(::thrust::device, f, l, ::hipstd::detail::callable_proxy<p_t>{guard.get()});
+    guard.destroy_and_free();
+    return result;
+  }
 }
 
 template <typename I,
@@ -716,7 +797,24 @@ inline typename iterator_traits<I>::difference_type count_if(execution::parallel
   ::hipstd::__maybe_bind_globals();
 
   ::hipstd::warn_if_no_xnack();
-  return ::thrust::count_if(::thrust::device, f, l, ::std::move(p));
+  using p_t = ::std::decay_t<P>;
+
+  if constexpr (::std::is_trivially_destructible_v<p_t>)
+  {
+    return ::thrust::count_if(::thrust::device, f, l, ::std::move(p));
+  }
+  else
+  {
+    // count_if synchronizes internally (reduction result read back to the host), so the guard is
+    // not needed for lifetime.  It is still required so that device code never copy-constructs an
+    // owning callable by value: the proxy hands the kernel a pointer, and the callable is only ever
+    // move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<p_t> guard(::std::move(p));
+    typename iterator_traits<I>::difference_type result =
+      ::thrust::count_if(::thrust::device, f, l, ::hipstd::detail::callable_proxy<p_t>{guard.get()});
+    guard.destroy_and_free();
+    return result;
+  }
 }
 
 template <typename I,
@@ -768,9 +866,25 @@ inline pair<I0, I1> mismatch(execution::parallel_unsequenced_policy, I0 f0, I0 l
   ::hipstd::__maybe_bind_globals();
 
   ::hipstd::warn_if_no_xnack();
-  auto [m0, m1] = ::thrust::mismatch(::thrust::device, f0, l0, f1, ::std::move(p));
+  using p_t = ::std::decay_t<P>;
 
-  return {::std::move(m0), ::std::move(m1)};
+  if constexpr (::std::is_trivially_destructible_v<p_t>)
+  {
+    auto [m0, m1] = ::thrust::mismatch(::thrust::device, f0, l0, f1, ::std::move(p));
+
+    return {::std::move(m0), ::std::move(m1)};
+  }
+  else
+  {
+    // mismatch synchronizes internally (find-based, result read back to the host), so the guard is
+    // not needed for lifetime.  It is still required so that device code never copy-constructs an
+    // owning callable by value: the proxy hands the kernel a pointer, and the callable is only ever
+    // move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<p_t> guard(::std::move(p));
+    auto [m0, m1] = ::thrust::mismatch(::thrust::device, f0, l0, f1, ::hipstd::detail::callable_proxy<p_t>{guard.get()});
+    guard.destroy_and_free();
+    return {::std::move(m0), ::std::move(m1)};
+  }
 }
 
 template <typename I0,
@@ -824,10 +938,26 @@ inline pair<I0, I1> mismatch(execution::parallel_unsequenced_policy, I0 f0, I0 l
 
   ::hipstd::warn_if_no_xnack();
   const auto n = ::std::min(l0 - f0, l1 - f1);
+  using p_t    = ::std::decay_t<P>;
 
-  auto [m0, m1] = ::thrust::mismatch(::thrust::device, f0, f0 + n, f1, ::std::move(p));
+  if constexpr (::std::is_trivially_destructible_v<p_t>)
+  {
+    auto [m0, m1] = ::thrust::mismatch(::thrust::device, f0, f0 + n, f1, ::std::move(p));
 
-  return {::std::move(m0), ::std::move(m1)};
+    return {::std::move(m0), ::std::move(m1)};
+  }
+  else
+  {
+    // mismatch synchronizes internally (find-based, result read back to the host), so the guard is
+    // not needed for lifetime.  It is still required so that device code never copy-constructs an
+    // owning callable by value: the proxy hands the kernel a pointer, and the callable is only ever
+    // move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<p_t> guard(::std::move(p));
+    auto [m0, m1] =
+      ::thrust::mismatch(::thrust::device, f0, f0 + n, f1, ::hipstd::detail::callable_proxy<p_t>{guard.get()});
+    guard.destroy_and_free();
+    return {::std::move(m0), ::std::move(m1)};
+  }
 }
 
 template <typename I0,
@@ -878,7 +1008,23 @@ inline bool equal(execution::parallel_unsequenced_policy, I0 f0, I0 l0, I1 f1, R
   ::hipstd::__maybe_bind_globals();
 
   ::hipstd::warn_if_no_xnack();
-  return ::thrust::equal(::thrust::device, f0, l0, f1, ::std::move(r));
+  using r_t = ::std::decay_t<R>;
+
+  if constexpr (::std::is_trivially_destructible_v<r_t>)
+  {
+    return ::thrust::equal(::thrust::device, f0, l0, f1, ::std::move(r));
+  }
+  else
+  {
+    // equal synchronizes internally (mismatch/reduction result read back to the host), so the guard
+    // is not needed for lifetime.  It is still required so that device code never copy-constructs an
+    // owning callable by value: the proxy hands the kernel a pointer, and the callable is only ever
+    // move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<r_t> guard(::std::move(r));
+    bool result = ::thrust::equal(::thrust::device, f0, l0, f1, ::hipstd::detail::callable_proxy<r_t>{guard.get()});
+    guard.destroy_and_free();
+    return result;
+  }
 }
 
 template <typename I0,
@@ -936,7 +1082,23 @@ inline bool equal(execution::parallel_unsequenced_policy, I0 f0, I0 l0, I1 f1, I
 
   ::hipstd::__maybe_bind_globals();
 
-  return ::thrust::equal(::thrust::device, f0, l0, f1, ::std::move(r));
+  using r_t = ::std::decay_t<R>;
+
+  if constexpr (::std::is_trivially_destructible_v<r_t>)
+  {
+    return ::thrust::equal(::thrust::device, f0, l0, f1, ::std::move(r));
+  }
+  else
+  {
+    // equal synchronizes internally (mismatch/reduction result read back to the host), so the guard
+    // is not needed for lifetime.  It is still required so that device code never copy-constructs an
+    // owning callable by value: the proxy hands the kernel a pointer, and the callable is only ever
+    // move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<r_t> guard(::std::move(r));
+    bool result = ::thrust::equal(::thrust::device, f0, l0, f1, ::hipstd::detail::callable_proxy<r_t>{guard.get()});
+    guard.destroy_and_free();
+    return result;
+  }
 }
 
 template <typename I0,

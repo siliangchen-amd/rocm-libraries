@@ -45,6 +45,7 @@
 
 #  include <algorithm>
 #  include <execution>
+#  include <type_traits>
 #  include <utility>
 
 #  include "hipstd.hpp"
@@ -81,7 +82,23 @@ inline O copy_if(execution::parallel_unsequenced_policy, I fi, I li, O fo, P p)
   ::hipstd::__maybe_bind_globals();
 
   ::hipstd::warn_if_no_xnack();
-  return ::thrust::copy_if(::thrust::device, fi, li, fo, ::std::move(p));
+  using p_t = ::std::decay_t<P>;
+
+  if constexpr (::std::is_trivially_destructible_v<p_t>)
+  {
+    return ::thrust::copy_if(::thrust::device, fi, li, fo, ::std::move(p));
+  }
+  else
+  {
+    // copy_if synchronizes internally (it reads the selected count back to the host), so the
+    // guard is not needed for lifetime.  It is still required so that device code never
+    // copy-constructs an owning callable by value: the proxy hands the kernel a pointer, and
+    // the callable is only ever move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<p_t> guard(::std::move(p));
+    O result = ::thrust::copy_if(::thrust::device, fi, li, fo, ::hipstd::detail::callable_proxy<p_t>{guard.get()});
+    guard.destroy_and_free();
+    return result;
+  }
 }
 
 template <typename I,

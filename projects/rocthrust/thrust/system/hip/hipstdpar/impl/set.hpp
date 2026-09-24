@@ -46,6 +46,7 @@
 
 #  include <algorithm>
 #  include <execution>
+#  include <type_traits>
 #  include <utility>
 
 #  include "hipstd.hpp"
@@ -83,8 +84,25 @@ inline bool includes(execution::parallel_unsequenced_policy, I0 f0, I0 l0, I1 f1
 
   ::hipstd::warn_if_no_xnack();
   ::thrust::discard_iterator<> cnt{0};
+  using r_t = ::std::decay_t<R>;
 
-  return ::thrust::set_difference(::thrust::device, f1, l1, f0, l0, cnt, ::std::move(r)) == cnt;
+  if constexpr (::std::is_trivially_destructible_v<r_t>)
+  {
+    return ::thrust::set_difference(::thrust::device, f1, l1, f0, l0, cnt, ::std::move(r)) == cnt;
+  }
+  else
+  {
+    // set_difference synchronizes internally (output count read back to the host), so the guard is
+    // not needed for lifetime.  It is still required so that device code never copy-constructs an
+    // owning callable by value: the proxy hands the kernel a pointer, and the callable is only ever
+    // move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<r_t> guard(::std::move(r));
+    bool result =
+      ::thrust::set_difference(::thrust::device, f1, l1, f0, l0, cnt, ::hipstd::detail::callable_proxy<r_t>{guard.get()})
+      == cnt;
+    guard.destroy_and_free();
+    return result;
+  }
 }
 
 template <typename I0,
@@ -138,7 +156,24 @@ inline O set_union(execution::parallel_unsequenced_policy, I0 fi0, I0 li0, I1 fi
   ::hipstd::__maybe_bind_globals();
 
   ::hipstd::warn_if_no_xnack();
-  return ::thrust::set_union(::thrust::device, fi0, li0, fi1, li1, fo, ::std::move(r));
+  using r_t = ::std::decay_t<R>;
+
+  if constexpr (::std::is_trivially_destructible_v<r_t>)
+  {
+    return ::thrust::set_union(::thrust::device, fi0, li0, fi1, li1, fo, ::std::move(r));
+  }
+  else
+  {
+    // set_union synchronizes internally (output count read back to the host), so the guard is not
+    // needed for lifetime.  It is still required so that device code never copy-constructs an
+    // owning callable by value: the proxy hands the kernel a pointer, and the callable is only ever
+    // move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<r_t> guard(::std::move(r));
+    O result =
+      ::thrust::set_union(::thrust::device, fi0, li0, fi1, li1, fo, ::hipstd::detail::callable_proxy<r_t>{guard.get()});
+    guard.destroy_and_free();
+    return result;
+  }
 }
 
 template <
@@ -195,7 +230,24 @@ inline O set_intersection(execution::parallel_unsequenced_policy, I0 fi0, I0 li0
   ::hipstd::__maybe_bind_globals();
 
   ::hipstd::warn_if_no_xnack();
-  return ::thrust::set_intersection(::thrust::device, fi0, li0, fi1, li1, fo, ::std::move(r));
+  using r_t = ::std::decay_t<R>;
+
+  if constexpr (::std::is_trivially_destructible_v<r_t>)
+  {
+    return ::thrust::set_intersection(::thrust::device, fi0, li0, fi1, li1, fo, ::std::move(r));
+  }
+  else
+  {
+    // set_intersection synchronizes internally (output count read back to the host), so the guard
+    // is not needed for lifetime.  It is still required so that device code never copy-constructs
+    // an owning callable by value: the proxy hands the kernel a pointer, and the callable is only
+    // ever move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<r_t> guard(::std::move(r));
+    O result = ::thrust::set_intersection(
+      ::thrust::device, fi0, li0, fi1, li1, fo, ::hipstd::detail::callable_proxy<r_t>{guard.get()});
+    guard.destroy_and_free();
+    return result;
+  }
 }
 
 template <
@@ -252,7 +304,24 @@ inline O set_difference(execution::parallel_unsequenced_policy, I0 fi0, I0 li0, 
   ::hipstd::__maybe_bind_globals();
 
   ::hipstd::warn_if_no_xnack();
-  return ::thrust::set_difference(::thrust::device, fi0, li0, fi1, li1, fo, ::std::move(r));
+  using r_t = ::std::decay_t<R>;
+
+  if constexpr (::std::is_trivially_destructible_v<r_t>)
+  {
+    return ::thrust::set_difference(::thrust::device, fi0, li0, fi1, li1, fo, ::std::move(r));
+  }
+  else
+  {
+    // set_difference synchronizes internally (output count read back to the host), so the guard is
+    // not needed for lifetime.  It is still required so that device code never copy-constructs an
+    // owning callable by value: the proxy hands the kernel a pointer, and the callable is only ever
+    // move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<r_t> guard(::std::move(r));
+    O result = ::thrust::set_difference(
+      ::thrust::device, fi0, li0, fi1, li1, fo, ::hipstd::detail::callable_proxy<r_t>{guard.get()});
+    guard.destroy_and_free();
+    return result;
+  }
 }
 
 template <
@@ -309,7 +378,24 @@ inline O set_symmetric_difference(execution::parallel_unsequenced_policy, I0 fi0
   ::hipstd::__maybe_bind_globals();
 
   ::hipstd::warn_if_no_xnack();
-  return ::thrust::set_symmetric_difference(::thrust::device, fi0, li0, fi1, li1, fo, ::std::move(r));
+  using r_t = ::std::decay_t<R>;
+
+  if constexpr (::std::is_trivially_destructible_v<r_t>)
+  {
+    return ::thrust::set_symmetric_difference(::thrust::device, fi0, li0, fi1, li1, fo, ::std::move(r));
+  }
+  else
+  {
+    // set_symmetric_difference synchronizes internally (output count read back to the host), so the
+    // guard is not needed for lifetime.  It is still required so that device code never
+    // copy-constructs an owning callable by value: the proxy hands the kernel a pointer, and the
+    // callable is only ever move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<r_t> guard(::std::move(r));
+    O result = ::thrust::set_symmetric_difference(
+      ::thrust::device, fi0, li0, fi1, li1, fo, ::hipstd::detail::callable_proxy<r_t>{guard.get()});
+    guard.destroy_and_free();
+    return result;
+  }
 }
 
 template <

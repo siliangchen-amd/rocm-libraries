@@ -46,6 +46,7 @@
 
 #  include <algorithm>
 #  include <execution>
+#  include <type_traits>
 #  include <utility>
 
 #  include "hipstd.hpp"
@@ -80,7 +81,23 @@ inline I remove_if(execution::parallel_unsequenced_policy, I f, I l, P p)
   ::hipstd::__maybe_bind_globals();
 
   ::hipstd::warn_if_no_xnack();
-  return ::thrust::remove_if(::thrust::device, f, l, ::std::move(p));
+  using p_t = ::std::decay_t<P>;
+
+  if constexpr (::std::is_trivially_destructible_v<p_t>)
+  {
+    return ::thrust::remove_if(::thrust::device, f, l, ::std::move(p));
+  }
+  else
+  {
+    // remove_if synchronizes internally (built on copy_if, which reads the count back to the host),
+    // so the guard is not needed for lifetime.  It is still required so that device code never
+    // copy-constructs an owning callable by value: the proxy hands the kernel a pointer, and the
+    // callable is only ever move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<p_t> guard(::std::move(p));
+    I result = ::thrust::remove_if(::thrust::device, f, l, ::hipstd::detail::callable_proxy<p_t>{guard.get()});
+    guard.destroy_and_free();
+    return result;
+  }
 }
 
 template <typename I,
@@ -131,7 +148,23 @@ inline O remove_copy_if(execution::parallel_unsequenced_policy, I fi, I li, O fo
   ::hipstd::__maybe_bind_globals();
 
   ::hipstd::warn_if_no_xnack();
-  return ::thrust::remove_copy_if(::thrust::device, fi, li, fo, ::std::move(p));
+  using p_t = ::std::decay_t<P>;
+
+  if constexpr (::std::is_trivially_destructible_v<p_t>)
+  {
+    return ::thrust::remove_copy_if(::thrust::device, fi, li, fo, ::std::move(p));
+  }
+  else
+  {
+    // remove_copy_if synchronizes internally (built on copy_if, which reads the count back to the
+    // host), so the guard is not needed for lifetime.  It is still required so that device code
+    // never copy-constructs an owning callable by value: the proxy hands the kernel a pointer, and
+    // the callable is only ever move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<p_t> guard(::std::move(p));
+    O result = ::thrust::remove_copy_if(::thrust::device, fi, li, fo, ::hipstd::detail::callable_proxy<p_t>{guard.get()});
+    guard.destroy_and_free();
+    return result;
+  }
 }
 
 template <typename I,
@@ -180,7 +213,23 @@ inline I unique(execution::parallel_unsequenced_policy, I f, I l, R r)
   ::hipstd::__maybe_bind_globals();
 
   ::hipstd::warn_if_no_xnack();
-  return ::thrust::unique(::thrust::device, f, l, ::std::move(r));
+  using r_t = ::std::decay_t<R>;
+
+  if constexpr (::std::is_trivially_destructible_v<r_t>)
+  {
+    return ::thrust::unique(::thrust::device, f, l, ::std::move(r));
+  }
+  else
+  {
+    // unique synchronizes internally (built on copy_if, which reads the count back to the host),
+    // so the guard is not needed for lifetime.  It is still required so that device code never
+    // copy-constructs an owning callable by value: the proxy hands the kernel a pointer, and the
+    // callable is only ever move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<r_t> guard(::std::move(r));
+    I result = ::thrust::unique(::thrust::device, f, l, ::hipstd::detail::callable_proxy<r_t>{guard.get()});
+    guard.destroy_and_free();
+    return result;
+  }
 }
 
 template <typename I,
@@ -229,7 +278,23 @@ inline O unique_copy(execution::parallel_unsequenced_policy, I fi, I li, O fo, R
   ::hipstd::__maybe_bind_globals();
 
   ::hipstd::warn_if_no_xnack();
-  return ::thrust::unique_copy(::thrust::device, fi, li, fo, ::std::move(r));
+  using r_t = ::std::decay_t<R>;
+
+  if constexpr (::std::is_trivially_destructible_v<r_t>)
+  {
+    return ::thrust::unique_copy(::thrust::device, fi, li, fo, ::std::move(r));
+  }
+  else
+  {
+    // unique_copy synchronizes internally (built on copy_if, which reads the count back to the
+    // host), so the guard is not needed for lifetime.  It is still required so that device code
+    // never copy-constructs an owning callable by value: the proxy hands the kernel a pointer, and
+    // the callable is only ever move-constructed once on the host into device-accessible memory.
+    ::hipstd::detail::device_callable_guard<r_t> guard(::std::move(r));
+    O result = ::thrust::unique_copy(::thrust::device, fi, li, fo, ::hipstd::detail::callable_proxy<r_t>{guard.get()});
+    guard.destroy_and_free();
+    return result;
+  }
 }
 
 template <typename I,
