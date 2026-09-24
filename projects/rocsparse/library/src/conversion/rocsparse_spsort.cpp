@@ -27,6 +27,7 @@
 #include "rocsparse_utility.hpp"
 
 #include "rocsparse_coosort.hpp"
+#include "rocsparse_csrsort.hpp"
 
 template <>
 bool rocsparse::enum_utils::is_invalid(rocsparse_spsort_alg value_)
@@ -264,6 +265,26 @@ namespace rocsparse
                 break;
             }
             case rocsparse_format_csr:
+            {
+                // The offsets may be shared by all batches with a stride of zero, but the target
+                // can only share its offsets if the source does too.
+                const int64_t offsets_size = source->rows + 1;
+                ROCSPARSE_CHECKARG(2,
+                                   source,
+                                   (source->columns_values_batch_stride < source->nnz
+                                    || (source->offsets_batch_stride != 0
+                                        && source->offsets_batch_stride < offsets_size)),
+                                   rocsparse_status_invalid_size);
+                ROCSPARSE_CHECKARG(
+                    3,
+                    target,
+                    (target->columns_values_batch_stride < target->nnz
+                     || (target->offsets_batch_stride != 0
+                         && target->offsets_batch_stride < offsets_size)
+                     || (target->offsets_batch_stride == 0 && source->offsets_batch_stride != 0)),
+                    rocsparse_status_invalid_size);
+                break;
+            }
             case rocsparse_format_csc:
             case rocsparse_format_coo_aos:
             case rocsparse_format_bsr:
@@ -276,6 +297,18 @@ namespace rocsparse
             }
         }
 
+        return rocsparse_status_success;
+    }
+
+    // A CSR matrix can only have the column indices within each row sorted.
+    static rocsparse_status spsort_check_direction(rocsparse_spsort_descr      descr,
+                                                   rocsparse_const_spmat_descr source)
+    {
+        ROCSPARSE_CHECKARG(
+            1,
+            descr,
+            (source->format == rocsparse_format_csr && descr->get_dir() != rocsparse_direction_row),
+            rocsparse_status_invalid_value);
         return rocsparse_status_success;
     }
 
@@ -299,11 +332,11 @@ namespace rocsparse
             switch(format)
             {
             case rocsparse_format_coo:
+            case rocsparse_format_csr:
             {
                 *buffer_size_in_bytes = 0;
                 return rocsparse_status_success;
             }
-            case rocsparse_format_csr:
             case rocsparse_format_csc:
             case rocsparse_format_coo_aos:
             case rocsparse_format_bsr:
@@ -344,6 +377,28 @@ namespace rocsparse
                 return rocsparse_status_success;
             }
             case rocsparse_format_csr:
+            {
+                RETURN_IF_ROCSPARSE_ERROR(
+                    (rocsparse::csrsort_buffer_size(handle,
+                                                    rocsparse_csrsort_alg_default,
+                                                    source->rows,
+                                                    source->cols,
+                                                    source->nnz,
+                                                    source->row_type,
+                                                    source->const_row_data,
+                                                    source->col_type,
+                                                    source->const_col_data,
+                                                    source->data_type,
+                                                    source->const_val_data,
+                                                    target->row_type,
+                                                    target->const_row_data,
+                                                    target->col_type,
+                                                    target->const_col_data,
+                                                    target->data_type,
+                                                    target->const_val_data,
+                                                    buffer_size_in_bytes)));
+                return rocsparse_status_success;
+            }
             case rocsparse_format_csc:
             case rocsparse_format_coo_aos:
             case rocsparse_format_bsr:
@@ -381,12 +436,12 @@ namespace rocsparse
             switch(format)
             {
             case rocsparse_format_coo:
+            case rocsparse_format_csr:
             {
                 return rocsparse_status_success;
             }
 
                 // LCOV_EXCL_START
-            case rocsparse_format_csr:
             case rocsparse_format_csc:
             case rocsparse_format_bsr:
             case rocsparse_format_ell:
@@ -434,8 +489,38 @@ namespace rocsparse
                 return rocsparse_status_success;
             }
 
-                // LCOV_EXCL_START
             case rocsparse_format_csr:
+            {
+                RETURN_IF_ROCSPARSE_ERROR((rocsparse::csrsort(handle,
+                                                              rocsparse_csrsort_alg_default,
+                                                              source->rows,
+                                                              source->cols,
+                                                              source->nnz,
+                                                              source->batch_count,
+                                                              source->offsets_batch_stride,
+                                                              source->columns_values_batch_stride,
+                                                              source->idx_base,
+                                                              source->row_type,
+                                                              source->const_row_data,
+                                                              source->col_type,
+                                                              source->const_col_data,
+                                                              source->data_type,
+                                                              source->const_val_data,
+                                                              target->batch_count,
+                                                              target->offsets_batch_stride,
+                                                              target->columns_values_batch_stride,
+                                                              target->idx_base,
+                                                              target->row_type,
+                                                              target->row_data,
+                                                              target->col_type,
+                                                              target->col_data,
+                                                              target->data_type,
+                                                              target->val_data,
+                                                              buffer)));
+                return rocsparse_status_success;
+            }
+
+                // LCOV_EXCL_START
             case rocsparse_format_csc:
             case rocsparse_format_bsr:
             case rocsparse_format_ell:
@@ -490,6 +575,7 @@ try
                        descr,
                        rocsparse::enum_utils::is_invalid(descr->get_dir()),
                        rocsparse_status_invalid_value);
+    RETURN_IF_ROCSPARSE_ERROR(rocsparse::spsort_check_direction(descr, source));
 
     RETURN_IF_ROCSPARSE_ERROR(
         rocsparse::spsort_buffer_size(handle, descr, source, target, stage, buffer_size_in_bytes));
@@ -540,6 +626,7 @@ try
                        descr,
                        rocsparse::enum_utils::is_invalid(descr->get_dir()),
                        rocsparse_status_invalid_value);
+    RETURN_IF_ROCSPARSE_ERROR(rocsparse::spsort_check_direction(descr, source));
 
     // Validate the stage.
     const rocsparse_spsort_stage current_stage = descr->get_stage();
